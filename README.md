@@ -1,2 +1,2 @@
-# MOPT-SCIS
-Prueba tecnica de mopt para lider tecnico de aplicaciones moviles.
+# MOPT-SCIS-Banckend
+Reporsitorio  para el backend del SCIS.
