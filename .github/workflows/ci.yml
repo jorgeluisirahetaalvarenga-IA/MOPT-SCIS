@@ -42,9 +42,7 @@ jobs:
       #  BUILD & TEST – Pruebas unitarias del backend
       - name: Run Unit Tests (Pytest)
         run: |
-          cd backend
-          export PYTHONPATH=$PYTHONPATH:$PWD
-          python -m pytest tests/test_health.py -v
+          python -m pytest backend/tests/test_health.py -v
 
       #  SECURITY SCAN – SAST sobre el backend
       - name: Run Security Scan (Bandit)
