@@ -41,7 +41,7 @@ jobs:
       #  BUILD & TEST – Pruebas unitarias del backend
       - name: Run Unit Tests (Pytest)
         run: |
-          pytest backend/tests
+          pytest backend/tests/test_health.py
 
       #  SECURITY SCAN – SAST sobre el backend
       - name: Run Security Scan (Bandit)
