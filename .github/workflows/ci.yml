@@ -1,0 +1,48 @@
+name: CI Pipeline - SCIS Backend
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      #  Checkout del código del backend
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      #  Configuración de Python (stack definido)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      #  Instalación de dependencias productivas del backend
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      #  Instalación de herramientas de CI (solo para el pipeline)
+      - name: Install CI tools (Linter, Tests, SAST)
+        run: |
+          pip install flake8 pytest bandit
+
+      #  BUILD & TEST – Linter (solo código backend)
+      - name: Run Linter (Flake8)
+        run: |
+          flake8 backend/app backend/scripts --max-line-length=120
+
+      #  BUILD & TEST – Pruebas unitarias del backend
+      - name: Run Unit Tests (Pytest)
+        run: |
+          pytest backend/tests
+
+      #  SECURITY SCAN – SAST sobre el backend
+      - name: Run Security Scan (Bandit)
+        run: |
+          bandit -r backend/app -ll
