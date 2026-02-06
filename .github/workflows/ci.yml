@@ -47,4 +47,4 @@ jobs:
       #  SECURITY SCAN – SAST sobre el backend
       - name: Run Security Scan (Bandit)
         run: |
-          bandit -r backend/app -ll --skip B104 --skip B101
+          bandit -r backend/app -ll --skip=B104 --skip=B101
