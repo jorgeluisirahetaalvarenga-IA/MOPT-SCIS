@@ -43,6 +43,7 @@ jobs:
       - name: Run Unit Tests (Pytest)
         run: |
           cd backend
+          export PYTHONPATH=$PYTHONPATH:$PWD
           python -m pytest tests/test_health.py -v
 
       #  SECURITY SCAN – SAST sobre el backend
