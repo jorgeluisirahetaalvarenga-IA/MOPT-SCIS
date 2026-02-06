@@ -155,7 +155,7 @@ def read_root():
     }
 
 @app.get("/health")
-def health_check():
+def health_check(db: Session = Depends(get_db)):
     """Endpoint de salud"""
     if DATABASE_AVAILABLE:
         try:
@@ -528,7 +528,7 @@ async def startup_event():
         try:
             # Crear tablas si no existen
             create_tables()
-            print("✅ Tablas de base de datos verificadas/creadas")
+            print(" Tablas de base de datos verificadas/creadas")
             
             # Verificar datos iniciales
             db = SessionLocal()
@@ -536,44 +536,44 @@ async def startup_event():
             product_count = db.query(Product).count()
             db.close()
             
-            print(f"   📊 Usuarios: {user_count}")
-            print(f"   📦 Productos: {product_count}")
+            print(f"    Usuarios: {user_count}")
+            print(f"    Productos: {product_count}")
             
             if user_count == 0:
-                print("⚠️  No hay usuarios. Ejecuta: python scripts/create_users.py")
+                print("  No hay usuarios. Ejecuta: python scripts/create_users.py")
             
         except Exception as e:
-            print(f"⚠️  Error en inicialización: {e}")
+            print(f"  Error en inicialización: {e}")
 
 # ==================== PUNTO DE ENTRADA ====================
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("🚀 SCIS API - SISTEMA DE CONTROL DE INVENTARIO")
+    print(" SCIS API - SISTEMA DE CONTROL DE INVENTARIO")
     print("=" * 60)
-    print("📄 Swagger UI: http://localhost:8000/docs")
-    print("🌐 API principal: http://localhost:8000/")
-    print("🔐 Autenticación: POST http://localhost:8000/token")
+    print("Swagger UI: http://localhost:8000/docs")
+    print(" API principal: http://localhost:8000/")
+    print(" Autenticación: POST http://localhost:8000/token")
     print("=" * 60)
     
     if DATABASE_AVAILABLE:
-        print("✅ Base de datos: CONECTADA")
+        print(" Base de datos: CONECTADA")
         try:
             db = SessionLocal()
             user_count = db.query(User).count()
             product_count = db.query(Product).count()
             db.close()
-            print(f"   👥 Usuarios: {user_count}")
-            print(f"   📦 Productos: {product_count}")
+            print(f"    Usuarios: {user_count}")
+            print(f"    Productos: {product_count}")
         except Exception as e:
-            print(f"   ⚠️  Error al conectar con la base de datos: {e}")
+            print(f"     Error al conectar con la base de datos: {e}")
     else:
-        print("⚠️  Base de datos: NO DISPONIBLE")
+        print("  Base de datos: NO DISPONIBLE")
     
     if AUTH_AVAILABLE:
-        print("✅ Autenticación: JWT HABILITADA")
+        print(" Autenticación: JWT HABILITADA")
     else:
-        print("⚠️  Autenticación: NO DISPONIBLE")
+        print("  Autenticación: NO DISPONIBLE")
     
     print("=" * 60)
     print()
