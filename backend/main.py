@@ -5,13 +5,13 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime, timedelta
+from typing import Optional, List, Any
+from datetime import datetime
 import uvicorn
-from sqlalchemy.orm import Session
 
 # Importar nuestros módulos
 try:
+    from sqlalchemy.orm import Session
     from infrastructure.database.session import get_db, SessionLocal, create_tables
     from infrastructure.database.models import User, Product, UserRole
     from infrastructure.auth.jwt_handler import JWTHandler, AuthenticationException
@@ -21,6 +21,51 @@ except ImportError as e:
     DATABASE_AVAILABLE = False
     AUTH_AVAILABLE = False
     print(f"  Advertencia: Error en imports - {e}")
+    
+    # Crear clases mock para evitar errores de importación
+    class UserRole:
+        ADMIN = "admin"
+        MANAGER = "manager"
+        OPERATOR = "operator"
+        VIEWER = "viewer"
+    
+    class MockUser:
+        id = 1
+        username = "test"
+        email = "test@example.com"
+        full_name = "Test User"
+        role = UserRole.ADMIN
+        is_active = True
+        created_at = datetime.now()
+        
+        def has_permission(self, required_role):
+            return True
+    
+    User = MockUser  # Alias para mantener compatibilidad
+    Product = type('Product', (), {})  # Clase vacía
+    
+    class JWTHandler:
+        """Clase mock para JWTHandler"""
+        @staticmethod
+        def verify_token(token):
+            return {"sub": "test", "user_id": 1}
+        
+        @staticmethod
+        def verify_password(password, hashed_password):
+            return True
+        
+        @staticmethod
+        def create_access_token(data):
+            return "mock_token"
+    
+    class AuthenticationException(Exception):
+        pass
+    
+    # Mock para Session
+    class MockSession:
+        pass
+    
+    Session = MockSession
 
 # Crear la aplicación FastAPI
 app = FastAPI(
@@ -41,7 +86,7 @@ app.add_middleware(
 )
 
 # Configurar OAuth2
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token", auto_error=False)
 
 # ==================== MODELOS PYDANTIC ====================
 
@@ -86,28 +131,26 @@ class TokenData(BaseModel):
 
 # ==================== FUNCIONES DE AUTENTICACIÓN ====================
 
+def get_db_dependency():
+    """Función para obtener db como dependencia solo si está disponible"""
+    if DATABASE_AVAILABLE:
+        from infrastructure.database.session import get_db
+        return Depends(get_db)
+    return None
+
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db) if DATABASE_AVAILABLE else None
-) -> Optional[User]:
+    token: Optional[str] = Depends(oauth2_scheme)
+) -> Any:
     """Obtener usuario actual desde token JWT"""
-    if not DATABASE_AVAILABLE or not AUTH_AVAILABLE or db is None:
+    if not DATABASE_AVAILABLE or not AUTH_AVAILABLE:
         # Para CI/testing, devolver un usuario mock
-        class MockUser:
-            id = 1
-            username = "test"
-            email = "test@example.com"
-            full_name = "Test User"
-            role = UserRole.ADMIN if DATABASE_AVAILABLE else "admin"
-            is_active = True
-            created_at = datetime.now()
-            
-            def has_permission(self, required_role):
-                return True
-        
         return MockUser()
     
     try:
+        # Solo importar dependencias si la base de datos está disponible
+        from infrastructure.database.session import get_db
+        db = next(get_db())
+        
         payload = JWTHandler.verify_token(token)
         username: str = payload.get("sub")
         user_id: int = payload.get("user_id")
@@ -144,9 +187,9 @@ def get_current_user(
             detail=f"Token inválido: {str(e)}"
         )
 
-def require_role(required_role: UserRole):
+def require_role(required_role: Any):
     """Decorador para verificar rol de usuario"""
-    def role_checker(current_user: User = Depends(get_current_user)):
+    def role_checker(current_user: Any = Depends(get_current_user)):
         if not DATABASE_AVAILABLE:
             # Para CI/testing, siempre permitir
             return current_user
@@ -154,7 +197,7 @@ def require_role(required_role: UserRole):
         if not current_user.has_permission(required_role):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permisos insuficientes. Requerido: {required_role.value}"
+                detail=f"Permisos insuficientes. Requerido: {required_role}"
             )
         return current_user
     return role_checker
@@ -180,20 +223,20 @@ def health_check():
     return {
         "status": "healthy",
         "service": "scis-api",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "database": "disponible" if DATABASE_AVAILABLE else "no disponible"
     }
 
 # ==================== ENDPOINTS DE AUTENTICACIÓN ====================
 
 @app.post("/token", response_model=Token)
 def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db) if DATABASE_AVAILABLE else None
+    form_data: OAuth2PasswordRequestForm = Depends()
 ):
     """
     Obtener token JWT
     """
-    if not DATABASE_AVAILABLE or not AUTH_AVAILABLE or db is None:
+    if not DATABASE_AVAILABLE or not AUTH_AVAILABLE:
         # Para CI/testing, devolver token mock
         return {
             "access_token": "mock_token_for_ci",
@@ -203,6 +246,10 @@ def login_for_access_token(
             "role": "admin",
             "expires_in": 1800
         }
+    
+    # Si hay base de datos, continuar con la implementación real
+    from infrastructure.database.session import get_db
+    db = next(get_db())
     
     # Buscar usuario
     user = db.query(User).filter(User.username == form_data.username).first()
@@ -260,7 +307,7 @@ def login_for_access_token(
         )
 
 @app.get("/verify-token")
-def verify_token(current_user: User = Depends(get_current_user)):
+def verify_token(current_user: Any = Depends(get_current_user)):
     """Verificar si un token es válido"""
     return {
         "valid": True,
@@ -271,7 +318,7 @@ def verify_token(current_user: User = Depends(get_current_user)):
     }
 
 @app.get("/me")
-def get_current_user_info(current_user: User = Depends(get_current_user)):
+def get_current_user_info(current_user: Any = Depends(get_current_user)):
     """Obtener información del usuario actual"""
     return {
         "id": current_user.id,
@@ -286,11 +333,15 @@ def get_current_user_info(current_user: User = Depends(get_current_user)):
 # ==================== ENDPOINTS DE USUARIOS ====================
 
 @app.get("/users/", dependencies=[Depends(require_role(UserRole.ADMIN))])
-def get_users(db: Session = Depends(get_db) if DATABASE_AVAILABLE else None):
+def get_users():
     """Obtener lista de usuarios (solo administradores)"""
-    if not DATABASE_AVAILABLE or db is None:
+    if not DATABASE_AVAILABLE:
         # Para CI/testing, devolver lista vacía
         return []
+    
+    # Si hay base de datos, continuar con la implementación real
+    from infrastructure.database.session import get_db
+    db = next(get_db())
     
     try:
         users = db.query(User).all()
@@ -316,15 +367,18 @@ def get_users(db: Session = Depends(get_db) if DATABASE_AVAILABLE else None):
 
 @app.get("/products/")
 def get_products(
-    current_user: User = Depends(get_current_user),
+    current_user: Any = Depends(get_current_user),
     skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db) if DATABASE_AVAILABLE else None
+    limit: int = 100
 ):
     """Obtener lista de productos"""
-    if not DATABASE_AVAILABLE or db is None:
+    if not DATABASE_AVAILABLE:
         # Para CI/testing, devolver lista vacía
         return []
+    
+    # Si hay base de datos, continuar con la implementación real
+    from infrastructure.database.session import get_db
+    db = next(get_db())
     
     try:
         products = db.query(Product).offset(skip).limit(limit).all()
@@ -351,11 +405,10 @@ def get_products(
 
 @app.post("/products/", dependencies=[Depends(require_role(UserRole.MANAGER))])
 def create_product(
-    product: ProductCreate,
-    db: Session = Depends(get_db) if DATABASE_AVAILABLE else None
+    product: ProductCreate
 ):
     """Crear nuevo producto"""
-    if not DATABASE_AVAILABLE or db is None:
+    if not DATABASE_AVAILABLE:
         # Para CI/testing, devolver éxito mock
         return {
             "message": "Producto creado exitosamente (CI mode)",
@@ -366,6 +419,10 @@ def create_product(
                 "current_stock": product.current_stock
             }
         }
+    
+    # Si hay base de datos, continuar con la implementación real
+    from infrastructure.database.session import get_db
+    db = next(get_db())
     
     try:
         # Verificar si el código ya existe
@@ -413,11 +470,10 @@ def create_product(
 @app.get("/products/{product_id}")
 def get_product(
     product_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db) if DATABASE_AVAILABLE else None
+    current_user: Any = Depends(get_current_user)
 ):
     """Obtener producto específico por ID"""
-    if not DATABASE_AVAILABLE or db is None:
+    if not DATABASE_AVAILABLE:
         # Para CI/testing, devolver producto mock
         return {
             "id": product_id,
@@ -430,6 +486,10 @@ def get_product(
             "unit": "unidades"
         }
     
+    # Si hay base de datos, continuar con la implementación real
+    from infrastructure.database.session import get_db
+    db = next(get_db())
+    
     try:
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
@@ -438,7 +498,20 @@ def get_product(
                 detail=f"Producto con ID {product_id} no encontrado"
             )
         
-        return product.to_dict()
+        # Si el producto tiene método to_dict, usarlo
+        if hasattr(product, 'to_dict'):
+            return product.to_dict()
+        else:
+            return {
+                "id": product.id,
+                "code": product.code,
+                "name": product.name,
+                "description": product.description,
+                "current_stock": product.current_stock,
+                "min_stock": product.min_stock,
+                "max_stock": product.max_stock,
+                "unit": product.unit
+            }
     except HTTPException:
         raise
     except Exception as e:
@@ -452,11 +525,10 @@ def get_product(
 @app.post("/movements/", dependencies=[Depends(require_role(UserRole.OPERATOR))])
 def create_movement(
     movement: MovementCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db) if DATABASE_AVAILABLE else None
+    current_user: Any = Depends(get_current_user)
 ):
     """Crear movimiento de inventario"""
-    if not DATABASE_AVAILABLE or db is None:
+    if not DATABASE_AVAILABLE:
         # Para CI/testing, devolver éxito mock
         return {
             "message": "Movimiento registrado exitosamente (CI mode)",
@@ -469,6 +541,10 @@ def create_movement(
             "user_id": current_user.id,
             "user_name": current_user.username
         }
+    
+    # Si hay base de datos, continuar con la implementación real
+    from infrastructure.database.session import get_db
+    db = next(get_db())
     
     try:
         # Validar tipo de movimiento
