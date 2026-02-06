@@ -1,17 +1,18 @@
 # SCIS - Sistema de Control de Inventario 
  
-## Prueba T�cnica LeaderTeam 
+## Prueba Tecnica LeaderTeam
+## Jorge Luis Iraheta Alvarenga 
  
-### Tecnolog�as 
+### Tecnologias 
 - Python 3.x + FastAPI 
 - SQLAlchemy 2.0 + SQLite 
 - Uvicorn 
  
 ### Requerimientos implementados 
-1. ? GET /api/products - Listado con paginaci�n 
-2. ? POST /api/inventory/movement - Control de concurrencia 
-3. ? Prevencion de stock negativo 
-4. ? Auditoria completa de movimientos 
+1.  GET /api/products - Listado con paginacion 
+2.  POST /api/inventory/movement - Control de concurrencia 
+3.  Prevencion de stock negativo 
+4.  Auditoria completa de movimientos 
  
 ### Instalaci�n 
 \`\`\`bash 
@@ -26,8 +27,8 @@ uvicorn app.main:app --reload
 \`\`\` 
  
 ### Endpoints 
-- \`GET /\` - Informaci�n del sistema 
+- \`GET /\` - Informacion del sistema 
 - \`GET /api/products\` - Listar productos 
 - \`POST /api/inventory/movement\` - Registrar movimiento 
-- \`GET /docs\` - Documentaci�n Swagger 
+- \`GET /docs\` - Documentacion Swagger 
 

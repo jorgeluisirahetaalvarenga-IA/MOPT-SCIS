@@ -69,9 +69,9 @@ def create_tables():
     from .base import Base
     from . import models  # Importar todos los modelos
     
-    print("📦 Creando tablas en la base de datos...")
+    print("Creando tablas en la base de datos...")
     Base.metadata.create_all(bind=engine)
-    print("✅ Tablas creadas exitosamente")
+    print(" Tablas creadas exitosamente")
     
 def drop_tables():
     """
@@ -81,6 +81,6 @@ def drop_tables():
     """
     from .base import Base
     
-    print("⚠️  Eliminando todas las tablas...")
+    print("Eliminando todas las tablas...")
     Base.metadata.drop_all(bind=engine)
-    print("✅ Tablas eliminadas")
+    print("Tablas eliminadas")
