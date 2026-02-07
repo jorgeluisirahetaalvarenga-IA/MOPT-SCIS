@@ -33,15 +33,7 @@ async def login(
     db: Session = Depends(get_db),
     audit_logger = Depends(get_audit_logger)
 ):
-    """
-    Iniciar sesión y obtener token JWT.
-    
-    - **username**: Nombre de usuario
-    - **password**: Contraseña
-    
-    Returns:
-        Token JWT para autenticación en endpoints protegidos
-    """
+
     try:
         # Crear caso de uso
         use_case = AuthenticateUserUseCase(
@@ -83,15 +75,7 @@ async def register_user(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(require_admin)
 ):
-    """
-    Registrar nuevo usuario (solo administradores).
     
-    - **username**: Nombre de usuario único (3-50 caracteres)
-    - **email**: Email único (formato válido)
-    - **password**: Contraseña (mínimo 8 caracteres, mayúscula, minúscula, número)
-    - **full_name**: Nombre completo (opcional)
-    - **role**: Rol del usuario (admin, manager, operator, viewer)
-    """
     try:
         # Verificar que el usuario no exista
         user_repo = get_user_repository(db)
@@ -147,35 +131,6 @@ async def register_user(
             detail=f"Error al registrar usuario: {str(e)}"
         )
 
-
-@router.get("/me", response_model=UserResponse)
-async def get_current_user_info(
-    current_user: UserModel = Depends(require_viewer)
-):
-    """
-    Obtener información del usuario actual.
-    
-    Returns:
-        Información completa del usuario autenticado
-    """
-    return UserResponse(
-        id=current_user.id,
-        username=current_user.username,
-        email=current_user.email,
-        full_name=current_user.full_name,
-        role=current_user.role.value,
-        is_active=current_user.is_active,
-        created_at=current_user.created_at,
-        updated_at=current_user.updated_at,
-        permissions={
-            "can_manage_products": current_user.can_perform_action("create_product"),
-            "can_manage_inventory": current_user.can_perform_action("register_movement"),
-            "can_view_reports": current_user.can_perform_action("view_reports"),
-            "can_manage_users": current_user.can_perform_action("create_user"),
-        }
-    )
-
-
 @router.get("/users", response_model=List[UserResponse])
 async def list_users(
     skip: int = 0,
@@ -183,15 +138,7 @@ async def list_users(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(require_admin)
 ):
-    """
-    Listar usuarios (solo administradores).
     
-    - **skip**: Número de usuarios a saltar (paginación)
-    - **limit**: Número máximo de usuarios a retornar (máx 100)
-    
-    Returns:
-        Lista de usuarios con información básica
-    """
     try:
         user_repo = get_user_repository(db)
         users = user_repo.find_all(skip=skip, limit=limit)
@@ -230,12 +177,7 @@ async def update_user(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(require_admin)
 ):
-    """
-    Actualizar usuario (solo administradores).
     
-    - **user_id**: ID del usuario a actualizar
-    - **user_data**: Datos a actualizar (campos opcionales)
-    """
     try:
         user_repo = get_user_repository(db)
         

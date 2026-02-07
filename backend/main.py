@@ -76,6 +76,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
@@ -317,18 +318,6 @@ def verify_token(current_user: Any = Depends(get_current_user)):
         "is_active": current_user.is_active
     }
 
-@app.get("/me")
-def get_current_user_info(current_user: Any = Depends(get_current_user)):
-    """Obtener información del usuario actual"""
-    return {
-        "id": current_user.id,
-        "username": current_user.username,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "role": current_user.role.value if hasattr(current_user.role, 'value') else current_user.role,
-        "is_active": current_user.is_active,
-        "created_at": current_user.created_at.isoformat() if hasattr(current_user, 'created_at') and current_user.created_at else None
-    }
 
 # ==================== ENDPOINTS DE USUARIOS ====================
 

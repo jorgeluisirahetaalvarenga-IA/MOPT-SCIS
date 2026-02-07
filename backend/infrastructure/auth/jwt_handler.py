@@ -10,6 +10,8 @@ Tecnologías:
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
+from sqlalchemy.orm import Session
+from typing import Optional, Dict, Any  # Si no está ya
 from passlib.context import CryptContext
 import hashlib
 import base64
@@ -298,6 +300,58 @@ class JWTHandler:
         except JWTError:
             return {}
     
+    @staticmethod
+    def get_user_from_token(token: str, db: Session) -> Optional[Dict[str, Any]]:
+        """
+        Obtener información del usuario desde el token JWT.
+        
+        Args:
+            token: Token JWT
+            db: Sesión de base de datos
+            
+        Returns:
+            dict: Información del usuario o None
+        """
+        try:
+            # Decodificar token
+            payload = jwt.decode(
+                token, 
+                SECRET_KEY, 
+                algorithms=[ALGORITHM],
+                options={"verify_exp": False}  # No verificar expiración aquí
+            )
+            
+            username = payload.get("sub")
+            if not username:
+                return None
+            
+            # Importar aquí para evitar dependencias circulares
+            from sqlalchemy.orm import Session
+            
+            # Buscar usuario en la base de datos
+            from ...infrastructure.database.models import User
+            user = db.query(User).filter(User.username == username).first()
+            
+            if not user:
+                return None
+            
+            return {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "role": user.role.value if hasattr(user.role, 'value') else user.role,
+                "is_active": user.is_active,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "updated_at": user.updated_at.isoformat() if user.updated_at else None
+            }
+            
+        except JWTError:
+            return None
+        except Exception as e:
+            print(f"Error en get_user_from_token: {str(e)}")
+            return None
+
     @classmethod
     def create_token_for_user(cls, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """
