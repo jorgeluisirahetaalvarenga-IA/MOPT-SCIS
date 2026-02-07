@@ -93,18 +93,7 @@ class JWTHandler:
     
     @staticmethod
     def verify_token(token: str) -> Dict[str, Any]:
-        """
-        Verificar y decodificar token JWT.
         
-        Args:
-            token: Token JWT a verificar
-            
-        Returns:
-            Dict[str, Any]: Payload decodificado
-            
-        Raises:
-            AuthenticationException: Si el token es inválido o expirado
-        """
         try:
             # Decodificar token
             payload = jwt.decode(
