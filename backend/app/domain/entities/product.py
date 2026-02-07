@@ -122,24 +122,7 @@ class Product:
             )
     
     def apply_stock_movement(self, quantity: int, movement_type: str) -> int:
-        """
-        Aplica un movimiento de stock al producto - REGLA DE NEGOCIO PURA
-        
-        Este es el método central de la entidad que implementa
-        la lógica de negocio para movimientos de inventario.
-        
-        Args:
-            quantity: Cantidad a mover (debe ser positiva)
-            movement_type: Tipo de movimiento ("IN" para entrada, "OUT" para salida)
-            
-        Returns:
-            int: Stock anterior (para auditoría)
-            
-        Raises:
-            InvalidMovementTypeError: Si el tipo de movimiento no es válido
-            InsufficientStockError: Si no hay suficiente stock para salida
-            StockExceedsMaximumError: Si el stock excede el máximo en entrada
-        """
+       
         # Validar cantidad positiva
         if quantity <= 0:
             raise BusinessRuleException(

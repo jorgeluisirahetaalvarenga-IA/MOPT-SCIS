@@ -19,6 +19,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///database/scis.db")
 # Crear engine de SQLAlchemy
 engine = create_engine(
     DATABASE_URL,
+    pool_size=20,
+    max_overflow=30,
+    pool_timeout=30,
     connect_args={"check_same_thread": False},  # Necesario para SQLite
     echo=os.getenv("DATABASE_ECHO", "false").lower() == "true",  # Mostrar queries SQL
     pool_pre_ping=True,  # Verificar conexión antes de usarla
@@ -27,10 +30,10 @@ engine = create_engine(
 
 # Factory para crear sesiones
 SessionLocal = sessionmaker(
-    autocommit=False,  # No auto-commit, control manual
-    autoflush=False,   # No auto-flush, control manual
+    autocommit=False,  
+    autoflush=False,   
     bind=engine,
-    expire_on_commit=False,  # Mantener objetos después del commit
+    expire_on_commit=False,  
 )
 
 def get_db() -> Generator[Session, None, None]:

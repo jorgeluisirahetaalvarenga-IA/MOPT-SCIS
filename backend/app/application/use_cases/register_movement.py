@@ -88,20 +88,7 @@ class RegisterMovementUseCase:
         self.user_repo = user_repository
     
     def execute(self, request: RegisterMovementRequest) -> RegisterMovementResponse:
-        """
-        Ejecutar el caso de uso.
-        
-        Args:
-            request: Datos del movimiento a registrar
-            
-        Returns:
-            RegisterMovementResponse: Resultado del movimiento
-            
-        Raises:
-            ValidationException: Si los datos son inválidos
-            NotFoundException: Si no se encuentra recurso
-            BusinessRuleException: Si se viola regla de negocio
-        """
+       
         # 1. Validar entrada a nivel de aplicación
         self._validate_request(request)
         
@@ -161,13 +148,7 @@ class RegisterMovementUseCase:
         )
     
     def _validate_request(self, request: RegisterMovementRequest):
-        """
-        Validaciones a nivel de aplicación.
-        Estas son validaciones de formato, no de reglas de negocio.
-        
-        Raises:
-            ValidationException: Si alguna validación falla
-        """
+       
         errors = []
         
         # Validar cantidad

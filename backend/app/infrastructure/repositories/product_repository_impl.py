@@ -65,7 +65,8 @@ class SQLAlchemyProductRepository(ProductRepository):
                 self.session.add(db_product)
             
             # Commit de la transacción
-            self.session.commit()
+            #self.session.commit()   ---Para solucionar el tema de concurrencia se cammbia flush por commit 
+            self.session.flush()  
             self.session.refresh(db_product)
             
             # Convertir de vuelta a dominio
@@ -204,13 +205,7 @@ class SQLAlchemyProductRepository(ProductRepository):
         }
     
     def _to_domain(self, db_product: ProductModel) -> Optional[Product]:
-        """
-        Convertir de modelo de persistencia a entidad de dominio.
         
-        Este es el mapeo Data Mapper:
-        - Modelo SQLAlchemy → Entidad de dominio
-        - Solo datos, sin lógica de negocio
-        """
         if not db_product:
             return None
         

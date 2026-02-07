@@ -1,19 +1,19 @@
 """
-main.py - SCIS API con autenticación JWT completa
+main.py - SCIS API con autenticación JWT completa y movimientos persistentes
 """
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import uvicorn
 
 # Importar nuestros módulos
 try:
     from sqlalchemy.orm import Session
     from infrastructure.database.session import get_db, SessionLocal, create_tables
-    from infrastructure.database.models import User, Product, UserRole
+    from infrastructure.database.models import User, Product, UserRole, InventoryMovement
     from infrastructure.auth.jwt_handler import JWTHandler, AuthenticationException
     DATABASE_AVAILABLE = True
     AUTH_AVAILABLE = True
@@ -41,8 +41,11 @@ except ImportError as e:
         def has_permission(self, required_role):
             return True
     
-    User = MockUser  # Alias para mantener compatibilidad
-    Product = type('Product', (), {})  # Clase vacía
+    User = MockUser
+    Product = type('Product', (), {})
+    
+    class InventoryMovement:
+        pass
     
     class JWTHandler:
         """Clase mock para JWTHandler"""
@@ -60,12 +63,6 @@ except ImportError as e:
     
     class AuthenticationException(Exception):
         pass
-    
-    # Mock para Session
-    class MockSession:
-        pass
-    
-    Session = MockSession
 
 # Crear la aplicación FastAPI
 app = FastAPI(
@@ -75,7 +72,6 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
-
 
 # Configurar CORS
 app.add_middleware(
@@ -95,12 +91,6 @@ class HealthCheck(BaseModel):
     status: str
     message: str
     dependencies: dict
-
-class Item(BaseModel):
-    name: str
-    description: Optional[str] = None
-    price: float
-    tax: Optional[float] = None
 
 class ProductCreate(BaseModel):
     code: str
@@ -125,32 +115,24 @@ class Token(BaseModel):
     role: str
     expires_in: int
 
-class TokenData(BaseModel):
-    username: Optional[str] = None
-    user_id: Optional[int] = None
-    role: Optional[str] = None
-
 # ==================== FUNCIONES DE AUTENTICACIÓN ====================
-
-def get_db_dependency():
-    """Función para obtener db como dependencia solo si está disponible"""
-    if DATABASE_AVAILABLE:
-        from infrastructure.database.session import get_db
-        return Depends(get_db)
-    return None
 
 def get_current_user(
     token: Optional[str] = Depends(oauth2_scheme)
 ) -> Any:
     """Obtener usuario actual desde token JWT"""
     if not DATABASE_AVAILABLE or not AUTH_AVAILABLE:
-        # Para CI/testing, devolver un usuario mock
         return MockUser()
     
     try:
-        # Solo importar dependencias si la base de datos está disponible
         from infrastructure.database.session import get_db
         db = next(get_db())
+        
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token no proporcionado"
+            )
         
         payload = JWTHandler.verify_token(token)
         username: str = payload.get("sub")
@@ -192,7 +174,6 @@ def require_role(required_role: Any):
     """Decorador para verificar rol de usuario"""
     def role_checker(current_user: Any = Depends(get_current_user)):
         if not DATABASE_AVAILABLE:
-            # Para CI/testing, siempre permitir
             return current_user
             
         if not current_user.has_permission(required_role):
@@ -220,12 +201,13 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    """Endpoint de salud simplificado para CI"""
+    """Endpoint de salud"""
     return {
         "status": "healthy",
         "service": "scis-api",
         "version": "1.0.0",
-        "database": "disponible" if DATABASE_AVAILABLE else "no disponible"
+        "database": "disponible" if DATABASE_AVAILABLE else "no disponible",
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 # ==================== ENDPOINTS DE AUTENTICACIÓN ====================
@@ -238,7 +220,6 @@ def login_for_access_token(
     Obtener token JWT
     """
     if not DATABASE_AVAILABLE or not AUTH_AVAILABLE:
-        # Para CI/testing, devolver token mock
         return {
             "access_token": "mock_token_for_ci",
             "token_type": "bearer",
@@ -248,11 +229,9 @@ def login_for_access_token(
             "expires_in": 1800
         }
     
-    # Si hay base de datos, continuar con la implementación real
     from infrastructure.database.session import get_db
     db = next(get_db())
     
-    # Buscar usuario
     user = db.query(User).filter(User.username == form_data.username).first()
     
     if not user:
@@ -261,7 +240,6 @@ def login_for_access_token(
             detail="Usuario no encontrado"
         )
     
-    # Verificar contraseña
     try:
         if not JWTHandler.verify_password(form_data.password, user.hashed_password):
             raise HTTPException(
@@ -274,14 +252,12 @@ def login_for_access_token(
             detail=f"Error al verificar contraseña: {str(e)}"
         )
     
-    # Verificar si usuario está activo
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario inactivo"
         )
     
-    # Crear token
     try:
         token_data = {
             "sub": user.username,
@@ -318,59 +294,33 @@ def verify_token(current_user: Any = Depends(get_current_user)):
         "is_active": current_user.is_active
     }
 
-
-# ==================== ENDPOINTS DE USUARIOS ====================
-
-@app.get("/users/", dependencies=[Depends(require_role(UserRole.ADMIN))])
-def get_users():
-    """Obtener lista de usuarios (solo administradores)"""
-    if not DATABASE_AVAILABLE:
-        # Para CI/testing, devolver lista vacía
-        return []
-    
-    # Si hay base de datos, continuar con la implementación real
-    from infrastructure.database.session import get_db
-    db = next(get_db())
-    
-    try:
-        users = db.query(User).all()
-        return [
-            {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "full_name": user.full_name,
-                "role": user.role.value,
-                "is_active": user.is_active,
-                "created_at": user.created_at.isoformat() if user.created_at else None
-            }
-            for user in users
-        ]
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener usuarios: {str(e)}"
-        )
-
 # ==================== ENDPOINTS DE PRODUCTOS ====================
 
 @app.get("/products/")
 def get_products(
     current_user: Any = Depends(get_current_user),
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    search: Optional[str] = None
 ):
     """Obtener lista de productos"""
     if not DATABASE_AVAILABLE:
-        # Para CI/testing, devolver lista vacía
         return []
     
-    # Si hay base de datos, continuar con la implementación real
     from infrastructure.database.session import get_db
     db = next(get_db())
     
     try:
-        products = db.query(Product).offset(skip).limit(limit).all()
+        query = db.query(Product)
+        
+        if search:
+            query = query.filter(
+                (Product.code.ilike(f"%{search}%")) |
+                (Product.name.ilike(f"%{search}%")) |
+                (Product.description.ilike(f"%{search}%"))
+            )
+        
+        products = query.offset(skip).limit(limit).all()
         return [
             {
                 "id": product.id,
@@ -382,23 +332,22 @@ def get_products(
                 "max_stock": product.max_stock,
                 "unit": product.unit,
                 "created_at": product.created_at.isoformat() if product.created_at else None,
-                "updated_at": product.updated_at.isoformat() if product.updated_at else None
+                "updated_at": product.updated_at.isoformat() if product.updated_at else None,
+                "version": getattr(product, 'version', 0)  # Para compatibilidad con frontend
             }
             for product in products
         ]
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener productos: {str(e)}"
-        )
+        print(f"Error al obtener productos: {e}")
+        return []
 
-@app.post("/products/", dependencies=[Depends(require_role(UserRole.MANAGER))])
+@app.post("/products/", dependencies=[Depends(require_role("manager"))])
 def create_product(
-    product: ProductCreate
+    product: ProductCreate,
+    current_user: Any = Depends(get_current_user)
 ):
     """Crear nuevo producto"""
     if not DATABASE_AVAILABLE:
-        # Para CI/testing, devolver éxito mock
         return {
             "message": "Producto creado exitosamente (CI mode)",
             "product": {
@@ -409,12 +358,10 @@ def create_product(
             }
         }
     
-    # Si hay base de datos, continuar con la implementación real
     from infrastructure.database.session import get_db
     db = next(get_db())
     
     try:
-        # Verificar si el código ya existe
         existing = db.query(Product).filter(Product.code == product.code).first()
         if existing:
             raise HTTPException(
@@ -422,7 +369,6 @@ def create_product(
                 detail=f"El código {product.code} ya existe"
             )
         
-        # Crear producto
         db_product = Product(
             code=product.code,
             name=product.name,
@@ -463,7 +409,6 @@ def get_product(
 ):
     """Obtener producto específico por ID"""
     if not DATABASE_AVAILABLE:
-        # Para CI/testing, devolver producto mock
         return {
             "id": product_id,
             "code": f"TEST{product_id}",
@@ -472,10 +417,10 @@ def get_product(
             "current_stock": 100,
             "min_stock": 10,
             "max_stock": 1000,
-            "unit": "unidades"
+            "unit": "unidades",
+            "version": 0
         }
     
-    # Si hay base de datos, continuar con la implementación real
     from infrastructure.database.session import get_db
     db = next(get_db())
     
@@ -487,20 +432,17 @@ def get_product(
                 detail=f"Producto con ID {product_id} no encontrado"
             )
         
-        # Si el producto tiene método to_dict, usarlo
-        if hasattr(product, 'to_dict'):
-            return product.to_dict()
-        else:
-            return {
-                "id": product.id,
-                "code": product.code,
-                "name": product.name,
-                "description": product.description,
-                "current_stock": product.current_stock,
-                "min_stock": product.min_stock,
-                "max_stock": product.max_stock,
-                "unit": product.unit
-            }
+        return {
+            "id": product.id,
+            "code": product.code,
+            "name": product.name,
+            "description": product.description,
+            "current_stock": product.current_stock,
+            "min_stock": product.min_stock,
+            "max_stock": product.max_stock,
+            "unit": product.unit,
+            "version": getattr(product, 'version', 0)
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -511,14 +453,13 @@ def get_product(
 
 # ==================== ENDPOINTS DE MOVIMIENTOS ====================
 
-@app.post("/movements/", dependencies=[Depends(require_role(UserRole.OPERATOR))])
+@app.post("/movements/")
 def create_movement(
     movement: MovementCreate,
     current_user: Any = Depends(get_current_user)
 ):
     """Crear movimiento de inventario"""
     if not DATABASE_AVAILABLE:
-        # Para CI/testing, devolver éxito mock
         return {
             "message": "Movimiento registrado exitosamente (CI mode)",
             "product_id": movement.product_id,
@@ -528,29 +469,27 @@ def create_movement(
             "previous_stock": 100,
             "new_stock": 100 + (movement.quantity if movement.movement_type == "IN" else -movement.quantity),
             "user_id": current_user.id,
-            "user_name": current_user.username
+            "user_name": current_user.username,
+            "product_name": f"Producto {movement.product_id}",
+            "created_at": datetime.utcnow().isoformat()
         }
     
-    # Si hay base de datos, continuar con la implementación real
     from infrastructure.database.session import get_db
     db = next(get_db())
     
     try:
-        # Validar tipo de movimiento
         if movement.movement_type not in ["IN", "OUT"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Tipo de movimiento debe ser 'IN' o 'OUT'"
             )
         
-        # Verificar que la cantidad sea positiva
         if movement.quantity <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La cantidad debe ser mayor a 0"
             )
         
-        # Buscar producto
         product = db.query(Product).filter(Product.id == movement.product_id).first()
         if not product:
             raise HTTPException(
@@ -558,10 +497,8 @@ def create_movement(
                 detail=f"Producto con ID {movement.product_id} no encontrado"
             )
         
-        # Guardar stock anterior
         previous_stock = product.current_stock
         
-        # Actualizar stock según el tipo de movimiento
         if movement.movement_type == "IN":
             new_stock = previous_stock + movement.quantity
         else:  # OUT
@@ -575,11 +512,26 @@ def create_movement(
         # Actualizar producto
         product.current_stock = new_stock
         
+        # Crear registro de movimiento
+        inventory_movement = InventoryMovement(
+            product_id=movement.product_id,
+            quantity=movement.quantity,
+            movement_type=movement.movement_type,
+            reason=movement.reason,
+            previous_stock=previous_stock,
+            new_stock=new_stock,
+            user_id=current_user.id
+        )
+        
+        db.add(inventory_movement)
         db.commit()
+        db.refresh(inventory_movement)
         
         return {
             "message": "Movimiento registrado exitosamente",
+            "id": inventory_movement.id,
             "product_id": product.id,
+            "product_code": product.code,
             "product_name": product.name,
             "movement_type": movement.movement_type,
             "quantity": movement.quantity,
@@ -587,7 +539,8 @@ def create_movement(
             "previous_stock": previous_stock,
             "new_stock": new_stock,
             "user_id": current_user.id,
-            "user_name": current_user.username
+            "user_name": current_user.username,
+            "created_at": inventory_movement.created_at.isoformat() if inventory_movement.created_at else datetime.utcnow().isoformat()
         }
         
     except HTTPException:
@@ -599,41 +552,180 @@ def create_movement(
             detail=f"Error al registrar movimiento: {str(e)}"
         )
 
+@app.get("/movements/")
+def get_movements(
+    current_user: Any = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 100,
+    product_id: Optional[int] = None,
+    days: Optional[int] = None
+):
+    """Obtener movimientos de inventario"""
+    if not DATABASE_AVAILABLE:
+        return []
+    
+    from infrastructure.database.session import get_db
+    db = next(get_db())
+    
+    try:
+        query = db.query(InventoryMovement).join(Product).join(User)
+        
+        if product_id:
+            query = query.filter(InventoryMovement.product_id == product_id)
+        
+        if days:
+            date_limit = datetime.utcnow() - timedelta(days=days)
+            query = query.filter(InventoryMovement.created_at >= date_limit)
+        
+        query = query.order_by(InventoryMovement.created_at.desc())
+        
+        movements = query.offset(skip).limit(limit).all()
+        
+        result = []
+        for movement in movements:
+            result.append({
+                "id": movement.id,
+                "product_id": movement.product_id,
+                "product_code": movement.product.code if movement.product else None,
+                "product_name": movement.product.name if movement.product else None,
+                "quantity": movement.quantity,
+                "movement_type": movement.movement_type,
+                "reason": movement.reason,
+                "previous_stock": movement.previous_stock,
+                "new_stock": movement.new_stock,
+                "user_id": movement.user_id,
+                "username": movement.user.username if movement.user else None,
+                "created_at": movement.created_at.isoformat() if movement.created_at else None
+            })
+        
+        return result
+        
+    except Exception as e:
+        print(f"Error al obtener movimientos: {e}")
+        # Si no existe la tabla, devolver array vacío
+        return []
+
+@app.get("/movements/{movement_id}")
+def get_movement_detail(
+    movement_id: int,
+    current_user: Any = Depends(get_current_user)
+):
+    """Obtener detalle de un movimiento"""
+    if not DATABASE_AVAILABLE:
+        return {
+            "id": movement_id,
+            "product_id": 1,
+            "quantity": 10,
+            "movement_type": "IN",
+            "reason": "Demo",
+            "previous_stock": 90,
+            "new_stock": 100
+        }
+    
+    from infrastructure.database.session import get_db
+    db = next(get_db())
+    
+    try:
+        movement = db.query(InventoryMovement).filter(InventoryMovement.id == movement_id).first()
+        if not movement:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Movimiento con ID {movement_id} no encontrado"
+            )
+        
+        return {
+            "id": movement.id,
+            "product_id": movement.product_id,
+            "product_code": movement.product.code if movement.product else None,
+            "product_name": movement.product.name if movement.product else None,
+            "quantity": movement.quantity,
+            "movement_type": movement.movement_type,
+            "reason": movement.reason,
+            "previous_stock": movement.previous_stock,
+            "new_stock": movement.new_stock,
+            "user_id": movement.user_id,
+            "username": movement.user.username if movement.user else None,
+            "created_at": movement.created_at.isoformat() if movement.created_at else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener movimiento: {str(e)}"
+        )
+
+# ==================== ENDPOINTS DE DASHBOARD ====================
+
+@app.get("/dashboard/stats")
+def get_dashboard_stats(
+    current_user: Any = Depends(get_current_user)
+):
+    """Obtener estadísticas del dashboard"""
+    if not DATABASE_AVAILABLE:
+        return {
+            "total_products": 5,
+            "total_movements": 10,
+            "low_stock_count": 2,
+            "today_movements": 3
+        }
+    
+    from infrastructure.database.session import get_db
+    from sqlalchemy import func
+    
+    db = next(get_db())
+    
+    try:
+        # Total productos
+        total_products = db.query(func.count(Product.id)).scalar() or 0
+        
+        # Total movimientos
+        total_movements = db.query(func.count(InventoryMovement.id)).scalar() or 0
+        
+        # Productos con stock bajo
+        low_stock_count = db.query(func.count(Product.id)).filter(
+            Product.current_stock < Product.min_stock
+        ).scalar() or 0
+        
+        # Movimientos de hoy
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_movements = db.query(func.count(InventoryMovement.id)).filter(
+            InventoryMovement.created_at >= today_start
+        ).scalar() or 0
+        
+        return {
+            "total_products": total_products,
+            "total_movements": total_movements,
+            "low_stock_count": low_stock_count,
+            "today_movements": today_movements
+        }
+        
+    except Exception as e:
+        print(f"Error en dashboard stats: {e}")
+        return {
+            "total_products": 0,
+            "total_movements": 0,
+            "low_stock_count": 0,
+            "today_movements": 0
+        }
+
 # ==================== ENDPOINTS PÚBLICOS DE DEMOSTRACIÓN ====================
 
 @app.get("/public/info")
 def public_info():
-    """Información pública (sin autenticación)"""
+    """Información pública"""
     return {
         "message": "Bienvenido al Sistema de Control de Inventario (SCIS)",
         "version": "1.0.0",
         "status": "operacional",
-        "authentication": "JWT Token en /token"
+        "authentication": "JWT Token en /token",
+        "endpoints": {
+            "products": "/products/",
+            "movements": "/movements/",
+            "auth": "/token"
+        }
     }
-
-# ==================== INICIALIZACIÓN ====================
-
-@app.on_event("startup")
-async def startup_event():
-    """Evento de inicio de la aplicación"""
-    if DATABASE_AVAILABLE:
-        try:
-            create_tables()
-            print("Tablas de base de datos verificadas/creadas")
-            
-            db = SessionLocal()
-            user_count = db.query(User).count()
-            product_count = db.query(Product).count()
-            db.close()
-            
-            print(f"Usuarios: {user_count}")
-            print(f"Productos: {product_count}")
-            
-            if user_count == 0:
-                print("No hay usuarios. Ejecuta: python scripts/create_users.py")
-            
-        except Exception as e:
-            print(f"Error en inicialización: {e}")
 
 # ==================== PUNTO DE ENTRADA ====================
 
@@ -647,30 +739,32 @@ if __name__ == "__main__":
     print("=" * 60)
     
     if DATABASE_AVAILABLE:
-        print("Base de datos: CONECTADA")
+        print(" Base de datos: CONECTADA")
         try:
             db = SessionLocal()
             user_count = db.query(User).count()
             product_count = db.query(Product).count()
+            movement_count = db.query(InventoryMovement).count()
             db.close()
-            print(f"Usuarios: {user_count}")
-            print(f"Productos: {product_count}")
+            print(f"👤 Usuarios: {user_count}")
+            print(f"📦 Productos: {product_count}")
+            print(f"🔄 Movimientos: {movement_count}")
         except Exception as e:
-            print(f"Error al conectar con la base de datos: {e}")
+            print(f"  Error al conectar con la base de datos: {e}")
     else:
-        print("Base de datos: NO DISPONIBLE")
+        print("  Base de datos: NO DISPONIBLE (modo CI/testing)")
     
     if AUTH_AVAILABLE:
-        print("Autenticación: JWT HABILITADA")
+        print(" Autenticación: JWT HABILITADA")
     else:
-        print("Autenticación: NO DISPONIBLE")
+        print("⚠️  Autenticación: NO DISPONIBLE (modo CI/testing)")
     
     print("=" * 60)
     print()
     
     uvicorn.run(
         app,
-        host="127.0.0.1",  # nosec B104 - Aceptado para desarrollo
+        host="127.0.0.1",
         port=8000,
         reload=True
     )
