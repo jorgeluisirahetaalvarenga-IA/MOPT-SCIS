@@ -67,14 +67,6 @@ class RegisterMovementUseCase:
     Caso de uso para registrar movimiento de inventario.
     Contiene toda la lógica de aplicación coordinando el dominio.
     
-    Flujo:
-    1. Validar request
-    2. Verificar existencia de usuario
-    3. Obtener y bloquear producto
-    4. Aplicar movimiento (dominio puro)
-    5. Crear registro de auditoría
-    6. Persistir cambios
-    7. Retornar respuesta
     """
     
     def __init__(

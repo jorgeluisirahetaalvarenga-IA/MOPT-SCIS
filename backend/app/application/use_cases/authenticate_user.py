@@ -50,19 +50,7 @@ class AuthenticateUserUseCase:
         self.password_verifier = password_verifier
     
     def execute(self, request: AuthenticateUserRequest) -> AuthenticateUserResponse:
-        """
-        Autenticar usuario y generar token JWT.
         
-        Args:
-            request: Credenciales de autenticación
-            
-        Returns:
-            AuthenticateUserResponse: Respuesta con token
-            
-        Raises:
-            ValidationException: Si las credenciales son inválidas
-            AuthenticationException: Si la autenticación falla
-        """
         # 1. Validar entrada
         self._validate_request(request)
         

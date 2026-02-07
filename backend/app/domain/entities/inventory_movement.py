@@ -18,21 +18,7 @@ from ....app.domain.exceptions import InvalidMovementTypeError
 
 @dataclass(frozen=False)  # No frozen porque necesitamos asignar id después de persistir
 class InventoryMovement:
-    """
-    Representa un movimiento de inventario (entrada o salida).
-    Es una entidad de auditoría que registra todos los cambios.
     
-    Atributos:
-    - id: Identificador único (asignado por persistencia)
-    - product_id: ID del producto afectado
-    - quantity: Cantidad movida (siempre positiva)
-    - movement_type: "IN" para entrada, "OUT" para salida
-    - reason: Razón del movimiento (auditoría)
-    - previous_stock: Stock antes del movimiento
-    - new_stock: Stock después del movimiento
-    - user_id: ID del usuario que realizó el movimiento
-    - created_at: Timestamp del movimiento
-    """
     id: Optional[int] = None
     product_id: int = 0
     quantity: int = 0
@@ -48,12 +34,7 @@ class InventoryMovement:
         self._validate()
     
     def _validate(self) -> None:
-        """
-        Validar invariantes de la entidad de movimiento.
-        
-        Raises:
-            BusinessRuleException: Si se viola algún invariante
-        """
+       
         # Cantidad debe ser positiva
         if self.quantity <= 0:
             raise BusinessRuleException(
@@ -120,21 +101,7 @@ class InventoryMovement:
         new_stock: int,
         user_id: int
     ) -> 'InventoryMovement':
-        """
-        Factory method para crear movimiento con datos completos.
-        
-        Args:
-            product_id: ID del producto
-            quantity: Cantidad movida
-            movement_type: "IN" o "OUT"
-            reason: Razón del movimiento
-            previous_stock: Stock antes del movimiento
-            new_stock: Stock después del movimiento
-            user_id: ID del usuario
-            
-        Returns:
-            InventoryMovement: Instancia validada
-        """
+       
         return cls(
             product_id=product_id,
             quantity=quantity,

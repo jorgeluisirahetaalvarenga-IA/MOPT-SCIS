@@ -33,17 +33,7 @@ async def register_movement(
     db: Session = Depends(get_db),
     audit_logger = Depends(get_audit_logger)
 ):
-    """
-    Registrar movimiento de inventario.
     
-    - **product_id**: ID del producto (requerido)
-    - **quantity**: Cantidad a mover (debe ser > 0)
-    - **movement_type**: "IN" para entrada, "OUT" para salida
-    - **reason**: Razón del movimiento (mínimo 3 caracteres)
-    
-    Returns:
-        Confirmación del movimiento con detalles
-    """
     try:
         # Crear caso de uso con repositorios concretos
         use_case = RegisterMovementUseCase(
@@ -133,19 +123,7 @@ async def get_movements(
     current_user: UserModel = Depends(require_viewer),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtener movimientos de inventario con filtros.
     
-    - **product_id**: Filtrar por producto
-    - **user_id**: Filtrar por usuario
-    - **start_date**: Fecha inicial (ej: 2024-01-01T00:00:00)
-    - **end_date**: Fecha final (ej: 2024-01-31T23:59:59)
-    - **skip**: Saltar N registros (paginación)
-    - **limit**: Máximo de registros (1-1000)
-    
-    Returns:
-        Lista de movimientos con información detallada
-    """
     try:
         movement_repo = get_movement_repository(db)
         
@@ -197,14 +175,7 @@ async def get_movement_detail(
     current_user: UserModel = Depends(require_viewer),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtener detalle de un movimiento específico.
     
-    - **movement_id**: ID del movimiento
-    
-    Returns:
-        Detalle completo del movimiento
-    """
     try:
         movement_repo = get_movement_repository(db)
         movement = movement_repo.find_by_id(movement_id)
@@ -243,12 +214,7 @@ async def get_inventory_status(
     current_user: UserModel = Depends(require_viewer),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtener estado completo del inventario.
     
-    Returns:
-        Estadísticas y alertas del inventario
-    """
     try:
         product_repo = get_product_repository(db)
         movement_repo = get_movement_repository(db)
@@ -331,16 +297,7 @@ async def get_product_movements(
     current_user: UserModel = Depends(require_viewer),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtener movimientos de un producto específico.
     
-    - **product_id**: ID del producto
-    - **skip**: Saltar N registros
-    - **limit**: Máximo de registros (1-500)
-    
-    Returns:
-        Lista de movimientos del producto
-    """
     try:
         # Verificar que el producto existe
         product = db.query(Product).filter(Product.id == product_id).first()
@@ -379,91 +336,3 @@ async def get_product_movements(
         )
 
 
-@router.get("/report/daily", response_model=dict)
-async def get_daily_report(
-    date: Optional[datetime] = Query(None, description="Fecha para reporte (default: hoy)"),
-    current_user: UserModel = Depends(require_viewer),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtener reporte diario de movimientos.
-    
-    - **date**: Fecha para el reporte (formato ISO 8601)
-    
-    Returns:
-        Reporte diario con resumen de movimientos
-    """
-    try:
-        if not date:
-            date = datetime.utcnow().date()
-        
-        # Ajustar fecha para rango completo del día
-        start_date = datetime.combine(date, datetime.min.time())
-        end_date = datetime.combine(date, datetime.max.time())
-        
-        movement_repo = get_movement_repository(db)
-        
-        # Obtener movimientos del día
-        movements = movement_repo.find_by_date_range(start_date, end_date)
-        
-        # Calcular estadísticas
-        total_movements = len(movements)
-        total_in = sum(m.quantity for m in movements if m.movement_type == "IN")
-        total_out = sum(m.quantity for m in movements if m.movement_type == "OUT")
-        
-        # Agrupar por producto
-        product_summary = {}
-        for movement in movements:
-            product_id = movement.product_id
-            if product_id not in product_summary:
-                product = db.query(Product).filter(Product.id == product_id).first()
-                product_summary[product_id] = {
-                    "product_id": product_id,
-                    "product_code": product.code if product else "N/A",
-                    "product_name": product.name if product else "Desconocido",
-                    "total_in": 0,
-                    "total_out": 0,
-                    "net_change": 0
-                }
-            
-            if movement.movement_type == "IN":
-                product_summary[product_id]["total_in"] += movement.quantity
-                product_summary[product_id]["net_change"] += movement.quantity
-            else:
-                product_summary[product_id]["total_out"] += movement.quantity
-                product_summary[product_id]["net_change"] -= movement.quantity
-        
-        # Agrupar por usuario
-        user_summary = {}
-        for movement in movements:
-            user_id = movement.user_id
-            if user_id not in user_summary:
-                user = db.query(UserModel).filter(UserModel.id == user_id).first()
-                user_summary[user_id] = {
-                    "user_id": user_id,
-                    "username": user.username if user else "N/A",
-                    "movement_count": 0,
-                    "total_quantity": 0
-                }
-            
-            user_summary[user_id]["movement_count"] += 1
-            user_summary[user_id]["total_quantity"] += movement.quantity
-        
-        return {
-            "date": date.isoformat(),
-            "summary": {
-                "total_movements": total_movements,
-                "total_in": total_in,
-                "total_out": total_out,
-                "net_change": total_in - total_out
-            },
-            "products": list(product_summary.values()),
-            "users": list(user_summary.values()),
-            "movement_count": total_movements
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al generar reporte diario: {str(e)}"
-        )

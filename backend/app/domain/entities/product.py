@@ -28,17 +28,6 @@ class Product:
     Entidad Producto que representa un ítem en inventario.
     Contiene toda la lógica de negocio relacionada con productos.
     
-    Atributos:
-    - id: Identificador único (puede ser None si es nuevo)
-    - code: Código único del producto (SKU)
-    - name: Nombre del producto
-    - description: Descripción detallada
-    - current_stock: Stock actual en inventario
-    - min_stock: Stock mínimo permitido (para alertas)
-    - max_stock: Stock máximo permitido (para optimización)
-    - unit: Unidad de medida
-    - created_at: Fecha de creación
-    - updated_at: Fecha de última actualización
     """
     id: Optional[int] = None
     code: str = ""

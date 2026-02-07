@@ -28,20 +28,7 @@ async def create_product(
     db: Session = Depends(get_db),
     audit_logger = Depends(get_audit_logger)
 ):
-    """
-    Crear nuevo producto.
     
-    - **code**: Código único del producto (requerido, 3-50 caracteres)
-    - **name**: Nombre del producto (requerido, 3-255 caracteres)
-    - **description**: Descripción detallada (opcional, máximo 500 caracteres)
-    - **current_stock**: Stock inicial (default: 0, mínimo: 0)
-    - **min_stock**: Stock mínimo (default: 0, mínimo: 0)
-    - **max_stock**: Stock máximo (default: 1000, mínimo: min_stock)
-    - **unit**: Unidad de medida (default: "unidades", máximo 20 caracteres)
-    
-    Returns:
-        Producto creado con información completa
-    """
     try:
         product_repo = get_product_repository(db)
         
@@ -107,25 +94,14 @@ async def create_product(
 @router.get("/", response_model=List[ProductResponse])
 async def get_products(
     skip: int = Query(0, ge=0, description="Saltar registros"),
-    limit: int = Query(100, ge=1, le=1000, description="Límite de registros"),
+    limit: int = Query(100, ge=1, le=1000, description="Límite de registros"), # paginacion po 1000 
     min_stock: Optional[int] = Query(None, ge=0, description="Filtrar por stock mínimo"),
     max_stock: Optional[int] = Query(None, ge=0, description="Filtrar por stock máximo"),
     search: Optional[str] = Query(None, description="Buscar en código, nombre o descripción"),
     current_user: UserModel = Depends(require_viewer),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtener lista de productos con filtros.
     
-    - **skip**: Saltar N registros (paginación)
-    - **limit**: Máximo de registros (1-1000)
-    - **min_stock**: Filtrar productos con stock >= valor
-    - **max_stock**: Filtrar productos con stock <= valor
-    - **search**: Buscar texto en código, nombre o descripción
-    
-    Returns:
-        Lista de productos con información básica
-    """
     try:
         product_repo = get_product_repository(db)
         products = product_repo.find_all(
@@ -169,14 +145,7 @@ async def get_product_detail(
     current_user: UserModel = Depends(require_viewer),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtener detalle de un producto específico.
     
-    - **product_id**: ID del producto
-    
-    Returns:
-        Detalle completo del producto
-    """
     try:
         product_repo = get_product_repository(db)
         product = product_repo.find_by_id(product_id)
@@ -221,15 +190,7 @@ async def update_product(
     db: Session = Depends(get_db),
     audit_logger = Depends(get_audit_logger)
 ):
-    """
-    Actualizar producto existente.
     
-    - **product_id**: ID del producto a actualizar
-    - **product_data**: Campos a actualizar (todos opcionales)
-    
-    Returns:
-        Producto actualizado
-    """
     try:
         product_repo = get_product_repository(db)
         
@@ -323,13 +284,7 @@ async def delete_product(
     db: Session = Depends(get_db),
     audit_logger = Depends(get_audit_logger)
 ):
-    """
-    Eliminar producto del sistema.
     
-    - **product_id**: ID del producto a eliminar
-    
-    Nota: Solo se puede eliminar productos sin movimientos registrados
-    """
     try:
         product_repo = get_product_repository(db)
         
@@ -385,96 +340,4 @@ async def delete_product(
         )
 
 
-@router.get("/search/{search_term}", response_model=List[ProductResponse])
-async def search_products(
-    search_term: str,
-    skip: int = Query(0, ge=0, description="Saltar registros"),
-    limit: int = Query(50, ge=1, le=200, description="Límite de registros"),
-    current_user: UserModel = Depends(require_viewer),
-    db: Session = Depends(get_db)
-):
-    """
-    Buscar productos por término.
-    
-    - **search_term**: Término de búsqueda (código, nombre o descripción)
-    - **skip**: Saltar N registros
-    - **limit**: Máximo de registros (1-200)
-    
-    Returns:
-        Productos que coinciden con la búsqueda
-    """
-    try:
-        product_repo = get_product_repository(db)
-        products = product_repo.find_all(
-            skip=skip,
-            limit=limit,
-            search=search_term
-        )
-        
-        return [
-            ProductResponse(
-                id=product.id if product.id else 0,
-                code=product.code,
-                name=product.name,
-                description=product.description,
-                current_stock=product.current_stock,
-                min_stock=product.min_stock,
-                max_stock=product.max_stock,
-                unit=product.unit,
-                stock_percentage=product.get_stock_percentage() if hasattr(product, 'get_stock_percentage') else 0,
-                needs_reorder=product.needs_reorder() if hasattr(product, 'needs_reorder') else False,
-                is_stock_low=product.is_stock_low() if hasattr(product, 'is_stock_low') else False,
-                is_stock_high=product.is_stock_high() if hasattr(product, 'is_stock_high') else False,
-                created_at=product.created_at if product.created_at else None,
-                updated_at=product.updated_at
-            )
-            for product in products
-        ]
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al buscar productos: {str(e)}"
-        )
 
-
-@router.get("/low-stock", response_model=List[ProductResponse])
-async def get_low_stock_products(
-    current_user: UserModel = Depends(require_viewer),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtener productos con stock bajo.
-    
-    Returns:
-        Productos que necesitan reorden
-    """
-    try:
-        product_repo = get_product_repository(db)
-        low_stock_products = product_repo.get_low_stock_products()
-        
-        return [
-            ProductResponse(
-                id=product.id if product.id else 0,
-                code=product.code,
-                name=product.name,
-                description=product.description,
-                current_stock=product.current_stock,
-                min_stock=product.min_stock,
-                max_stock=product.max_stock,
-                unit=product.unit,
-                stock_percentage=product.get_stock_percentage() if hasattr(product, 'get_stock_percentage') else 0,
-                needs_reorder=product.needs_reorder() if hasattr(product, 'needs_reorder') else False,
-                is_stock_low=product.is_stock_low() if hasattr(product, 'is_stock_low') else False,
-                is_stock_high=product.is_stock_high() if hasattr(product, 'is_stock_high') else False,
-                created_at=product.created_at if product.created_at else None,
-                updated_at=product.updated_at
-            )
-            for product in low_stock_products
-        ]
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener productos con stock bajo: {str(e)}"
-        )

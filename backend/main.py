@@ -710,22 +710,6 @@ def get_dashboard_stats(
             "today_movements": 0
         }
 
-# ==================== ENDPOINTS PÚBLICOS DE DEMOSTRACIÓN ====================
-
-@app.get("/public/info")
-def public_info():
-    """Información pública"""
-    return {
-        "message": "Bienvenido al Sistema de Control de Inventario (SCIS)",
-        "version": "1.0.0",
-        "status": "operacional",
-        "authentication": "JWT Token en /token",
-        "endpoints": {
-            "products": "/products/",
-            "movements": "/movements/",
-            "auth": "/token"
-        }
-    }
 
 # ==================== PUNTO DE ENTRADA ====================
 
