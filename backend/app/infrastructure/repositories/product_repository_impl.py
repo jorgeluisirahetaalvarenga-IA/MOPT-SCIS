@@ -65,7 +65,7 @@ class SQLAlchemyProductRepository(ProductRepository):
                 self.session.add(db_product)
             
             # Commit de la transacción
-            #self.session.commit()   #Para solucionar el tema de concurrencia se cammbia flush por commit 
+            # self.session.commit()   #Para solucionar el tema de concurrencia se cammbia flush por commit 
             self.session.flush()  
             self.session.refresh(db_product)
             
